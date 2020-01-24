@@ -204,6 +204,11 @@ All notable, unreleased changes to this project will be documented in this file.
 - New translations:
   - Greek
 
+## 2.9.1
+
+- Fix permission for checkoutCustomerAttach mutation - #5192 by @maarcingebala
+- Restrict access to user field - #5194 by @maarcingebala
+
 ## 2.8.0
 
 ### Core
