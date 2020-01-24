@@ -4,21 +4,18 @@ from django.core.exceptions import ValidationError
 from graphene import relay
 from graphql_jwt.exceptions import PermissionDenied
 
-from ...core.permissions import AccountPermissions, OrderPermissions
-from ...core.taxes import display_gross_prices
-from ...plugins.manager import get_plugins_manager
 from ...order import models
 from ...order.models import FulfillmentStatus
 from ...order.utils import get_valid_shipping_methods_for_order
 from ...product.templatetags.product_images import get_product_image_thumbnail
 from ..account.types import User
 from ..core.connection import CountableDjangoObjectType
+from ..core.resolvers import resolve_meta, resolve_private_meta
 from ..core.types.common import Image
+from ..core.types.meta import MetadataObjectType
 from ..core.types.money import Money, TaxedMoney
 from ..decorators import permission_required
 from ..giftcard.types import GiftCard
-from ..meta.deprecated.resolvers import resolve_meta, resolve_private_meta
-from ..meta.types import ObjectWithMetadata
 from ..payment.types import OrderAction, Payment, PaymentChargeStatusEnum
 from ..product.types import ProductVariant
 from ..shipping.types import ShippingMethod
@@ -68,10 +65,8 @@ class OrderEvent(CountableDjangoObjectType):
     @staticmethod
     def resolve_user(root: models.OrderEvent, info):
         user = info.context.user
-        if (
-            user == root.user
-            or user.has_perm(AccountPermissions.MANAGE_USERS)
-            or user.has_perm(AccountPermissions.MANAGE_STAFF)
+        if user == root.user or user.has_perms(
+            ["account.manage_users", "account.manage_staff"]
         ):
             return root.user
         raise PermissionDenied()
@@ -168,7 +163,7 @@ class FulfillmentLine(CountableDjangoObjectType):
         return root.order_line
 
 
-class Fulfillment(CountableDjangoObjectType):
+class Fulfillment(MetadataObjectType, CountableDjangoObjectType):
     lines = gql_optimizer.field(
         graphene.List(
             FulfillmentLine, description="List of lines for the fulfillment."
@@ -179,12 +174,12 @@ class Fulfillment(CountableDjangoObjectType):
 
     class Meta:
         description = "Represents order fulfillment."
-        interfaces = [relay.Node, ObjectWithMetadata]
+        interfaces = [relay.Node]
         model = models.Fulfillment
         only_fields = [
             "fulfillment_order",
             "id",
-            "created",
+            "shipping_date",
             "status",
             "tracking_number",
         ]
@@ -198,7 +193,7 @@ class Fulfillment(CountableDjangoObjectType):
         return root.get_status_display()
 
     @staticmethod
-    @permission_required(OrderPermissions.MANAGE_ORDERS)
+    @permission_required("orders.manage_orders")
     def resolve_private_meta(root: models.Fulfillment, _info):
         return resolve_private_meta(root, _info)
 
@@ -252,7 +247,7 @@ class OrderLine(CountableDjangoObjectType):
         prefetch_related=["variant__images", "variant__product__images"]
     )
     def resolve_thumbnail(root: models.OrderLine, info, *, size=255):
-        if not root.variant:
+        if not root.variant_id:
             return None
         image = root.variant.get_first_image()
         if image:
@@ -274,7 +269,7 @@ class OrderLine(CountableDjangoObjectType):
         return root.translated_variant_name
 
 
-class Order(CountableDjangoObjectType):
+class Order(MetadataObjectType, CountableDjangoObjectType):
     fulfillments = gql_optimizer.field(
         graphene.List(
             Fulfillment, required=True, description="List of shipments for the order."
@@ -347,10 +342,17 @@ class Order(CountableDjangoObjectType):
     is_shipping_required = graphene.Boolean(
         description="Returns True, if order requires shipping.", required=True
     )
+    discount_amount = graphene.Field(
+        Money,
+        deprecation_reason=(
+            "DEPRECATED: Will be removed in Saleor 2.10, use discount instead."
+        ),
+        required=True,
+    )
 
     class Meta:
         description = "Represents an order in the shop."
-        interfaces = [relay.Node, ObjectWithMetadata]
+        interfaces = [relay.Node]
         model = models.Order
         only_fields = [
             "billing_address",
@@ -432,7 +434,7 @@ class Order(CountableDjangoObjectType):
         return root.lines.all().order_by("pk")
 
     @staticmethod
-    @permission_required(OrderPermissions.MANAGE_ORDERS)
+    @permission_required("order.manage_orders")
     def resolve_events(root: models.Order, _info):
         return root.events.all().order_by("pk")
 
@@ -479,7 +481,7 @@ class Order(CountableDjangoObjectType):
     @staticmethod
     def resolve_user(root: models.Order, info):
         user = info.context.user
-        if user == root.user or user.has_perm(AccountPermissions.MANAGE_USERS):
+        if user == root.user or user.has_perm("account.manage_users"):
             return root.user
         raise PermissionDenied()
 
@@ -488,19 +490,6 @@ class Order(CountableDjangoObjectType):
         available = get_valid_shipping_methods_for_order(root)
         if available is None:
             return []
-
-        manager = get_plugins_manager()
-        display_gross = display_gross_prices()
-        for shipping_method in available:
-            # Ignore typing check because it is checked in
-            # get_valid_shipping_methods_for_order
-            taxed_price = manager.apply_taxes_to_shipping(
-                shipping_method.price, root.shipping_address  # type: ignore
-            )
-            if display_gross:
-                shipping_method.price = taxed_price.gross
-            else:
-                shipping_method.price = taxed_price.net
         return available
 
     @staticmethod
@@ -512,7 +501,11 @@ class Order(CountableDjangoObjectType):
         return root.gift_cards.all()
 
     @staticmethod
-    @permission_required(OrderPermissions.MANAGE_ORDERS)
+    def resolve_discount_amount(root: models.Order, _info):
+        return root.discount
+
+    @staticmethod
+    @permission_required("order.manage_orders")
     def resolve_private_meta(root: models.Order, _info):
         return resolve_private_meta(root, _info)
 
