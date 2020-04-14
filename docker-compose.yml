@@ -2,7 +2,7 @@ version: '2'
 
 services:
   web:
-    container_name: saleor-harcore- web
+    container_name: saleor-harcore-web
     build:
       context: .
       dockerfile: ./Dockerfile
