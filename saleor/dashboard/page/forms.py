@@ -1,5 +1,6 @@
 from django import forms
 from django.utils.translation import pgettext_lazy
+from ckeditor_uploader.widgets import CKEditorUploadingWidget
 
 from ...page.models import Page
 from ..product.forms import RichTextField
@@ -8,9 +9,10 @@ from ..seo.utils import prepare_seo_description
 
 
 class PageForm(forms.ModelForm):
-    content = RichTextField(
-        label=pgettext_lazy("Page form: page content field", "Content"), required=True
-    )
+    content = forms.CharField(widget=CKEditorUploadingWidget(),
+                              label=pgettext_lazy("Page form: page content field", "Content"),
+                              required=True
+              )
 
     class Meta:
         model = Page
