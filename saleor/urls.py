@@ -23,6 +23,7 @@ from .search.urls import urlpatterns as search_urls
 handler404 = "saleor.core.views.handle_404"
 
 non_translatable_urlpatterns = [
+    url(r'^ckeditor/', include('ckeditor_uploader.urls')),
     url(r"^dashboard/", include((dashboard_urls, "dashboard"), namespace="dashboard")),
     url(r"^graphql/", csrf_exempt(GraphQLView.as_view(schema=schema)), name="api"),
     url(
