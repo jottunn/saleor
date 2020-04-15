@@ -7,7 +7,6 @@ from prices import Money
 from saleor.checkout.utils import get_voucher_discount_for_checkout
 from saleor.discount import DiscountInfo, DiscountValueType, VoucherType
 from saleor.discount.models import NotApplicable, Sale, Voucher, VoucherCustomer
-from saleor.discount.templatetags.voucher import discount_as_negative
 from saleor.discount.utils import (
     add_voucher_usage_by_customer,
     decrease_voucher_usage,
@@ -32,19 +31,6 @@ def test_valid_voucher_min_spent_amount(min_spent_amount, value):
         min_spent=min_spent_amount,
     )
     voucher.validate_min_spent(value)
-
-
-def test_valid_voucher_min_checkout_items_quantity(voucher):
-    voucher.min_checkout_items_quantity = 3
-    voucher.save()
-
-    with pytest.raises(NotApplicable) as e:
-        voucher.validate_min_checkout_items_quantity(2)
-
-    assert (
-        str(e.value)
-        == "This offer is only valid for orders with a minimum of 3 quantity."
-    )
 
 
 @pytest.mark.integration
@@ -136,7 +122,6 @@ def test_specific_products_voucher_checkout_discount(
 def test_sale_applies_to_correct_products(product_type, category):
     product = Product.objects.create(
         name="Test Product",
-        slug="test-product",
         price=Money(10, "USD"),
         description="",
         pk=111,
@@ -146,7 +131,6 @@ def test_sale_applies_to_correct_products(product_type, category):
     variant = ProductVariant.objects.create(product=product, sku="firstvar")
     product2 = Product.objects.create(
         name="Second product",
-        slug="second-product",
         price=Money(15, "USD"),
         description="",
         product_type=product_type,
@@ -157,11 +141,11 @@ def test_sale_applies_to_correct_products(product_type, category):
     discount = DiscountInfo(
         sale=sale, product_ids={product.id}, category_ids=set(), collection_ids=set()
     )
-    product_discount = get_product_discount_on_sale(variant.product, set(), discount)
+    product_discount = get_product_discount_on_sale(variant.product, discount)
     discounted_price = product_discount(product.price)
     assert discounted_price == Money(7, "USD")
     with pytest.raises(NotApplicable):
-        get_product_discount_on_sale(sec_variant.product, set(), discount)
+        get_product_discount_on_sale(sec_variant.product, discount)
 
 
 def test_increase_voucher_usage():
@@ -323,21 +307,3 @@ def test_sale_active(current_date, start_date, end_date, is_active):
     )
     sale_is_active = Sale.objects.active(date=current_date).exists()
     assert is_active == sale_is_active
-
-
-def test_discount_as_negative():
-    discount = Money(10, "USD")
-    result = discount_as_negative(discount)
-    assert result == "-$10.00"
-
-
-def test_discount_as_negative_for_zero_value():
-    discount = Money(0, "USD")
-    result = discount_as_negative(discount)
-    assert result == "$0.00"
-
-
-def test_discount_as_negative_for_html():
-    discount = Money(10, "USD")
-    result = discount_as_negative(discount, True)
-    assert result == '-<span class="currency">$</span>10.00'

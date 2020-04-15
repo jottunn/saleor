@@ -8,7 +8,7 @@ from ...discount import DiscountValueType
 from ...discount.models import Sale, Voucher, VoucherQueryset
 from ..core.filters import ListObjectTypeFilter, ObjectTypeFilter
 from ..core.types.common import DateTimeRangeInput, IntRangeInput
-from ..utils import filter_by_query_param, filter_range_field
+from ..utils import filter_by_query_param
 from .enums import DiscountStatusEnum, DiscountValueTypeEnum, VoucherDiscountType
 
 
@@ -29,7 +29,13 @@ def filter_status(
 
 
 def filter_times_used(qs, _, value):
-    return filter_range_field(qs, "used", value)
+    gte = value.get("gte")
+    lte = value.get("lte")
+    if gte:
+        qs = qs.filter(used__gte=gte)
+    if lte:
+        qs = qs.filter(used__lte=lte)
+    return qs
 
 
 def filter_discount_type(
@@ -38,13 +44,9 @@ def filter_discount_type(
     if value:
         query = Q()
         if VoucherDiscountType.FIXED in value:
-            query |= Q(
-                discount_value_type=VoucherDiscountType.FIXED.value  # type: ignore
-            )
+            query |= Q(discount_value_type=VoucherDiscountType.FIXED.value)
         if VoucherDiscountType.PERCENTAGE in value:
-            query |= Q(
-                discount_value_type=VoucherDiscountType.PERCENTAGE.value  # type: ignore
-            )
+            query |= Q(discount_value_type=VoucherDiscountType.PERCENTAGE.value)
         if VoucherDiscountType.SHIPPING in value:
             query |= Q(type=VoucherDiscountType.SHIPPING)
         qs = qs.filter(query).distinct()
@@ -52,7 +54,13 @@ def filter_discount_type(
 
 
 def filter_started(qs, _, value):
-    return filter_range_field(qs, "start_date", value)
+    gte = value.get("gte")
+    lte = value.get("lte")
+    if gte:
+        qs = qs.filter(start_date__gte=gte)
+    if lte:
+        qs = qs.filter(start_date__gte=lte)
+    return qs
 
 
 def filter_sale_type(qs, _, value):

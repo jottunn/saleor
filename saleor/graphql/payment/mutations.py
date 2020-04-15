@@ -2,7 +2,6 @@ import graphene
 from django.conf import settings
 from django.core.exceptions import ValidationError
 
-from ...core.permissions import OrderPermissions
 from ...core.taxes import zero_taxed_money
 from ...core.utils import get_client_ip
 from ...payment import PaymentError, gateway, models
@@ -40,14 +39,10 @@ class PaymentInput(graphene.InputObjectType):
         ),
     )
     billing_address = AddressInput(
-        required=False,
         description=(
             "Billing address. If empty, the billing address associated with the "
-            "checkout instance will be used. "
-            "DEPRECATED: `Checkout.billingAddress` will be used instead. Use "
-            "`checkoutCreate` or `checkoutBillingAddressUpdate` mutations to set it. "
-            "This field will be removed in Saleor 2.11"
-        ),
+            "checkout instance will be used."
+        )
     )
 
 
@@ -67,17 +62,18 @@ class CheckoutPaymentCreate(BaseMutation, I18nMixin):
         error_type_field = "payment_errors"
 
     @classmethod
-    def calculate_total(cls, info, checkout):
-        checkout_total = (
-            info.context.plugins.calculate_checkout_total(
-                checkout, discounts=info.context.discounts
-            )
-            - checkout.get_total_gift_cards_balance()
+    def perform_mutation(cls, _root, info, checkout_id, **data):
+        checkout_id = from_global_id_strict_type(
+            checkout_id, only_type=Checkout, field="checkout_id"
         )
-        return max(checkout_total, zero_taxed_money(checkout_total.currency))
+        checkout = models.Checkout.objects.prefetch_related(
+            "lines__variant__product__collections"
+        ).get(pk=checkout_id)
 
-    @classmethod
-    def clean_billing_address(cls, billing_address):
+        data = data.get("input")
+        billing_address = checkout.billing_address
+        if "billing_address" in data:
+            billing_address = cls.validate_address(data["billing_address"])
         if billing_address is None:
             raise ValidationError(
                 {
@@ -88,9 +84,15 @@ class CheckoutPaymentCreate(BaseMutation, I18nMixin):
                 }
             )
 
-    @classmethod
-    def clean_payment_amount(cls, info, checkout_total, amount):
-        if amount != checkout_total.gross.amount:
+        checkout_total = (
+            info.context.extensions.calculate_checkout_total(
+                checkout, discounts=info.context.discounts
+            )
+            - checkout.get_total_gift_cards_balance()
+        )
+        checkout_total = max(checkout_total, zero_taxed_money(checkout_total.currency))
+        amount = data.get("amount", checkout_total.gross.amount)
+        if amount < checkout_total.gross.amount:
             raise ValidationError(
                 {
                     "amount": ValidationError(
@@ -101,23 +103,6 @@ class CheckoutPaymentCreate(BaseMutation, I18nMixin):
                 }
             )
 
-    @classmethod
-    def perform_mutation(cls, _root, info, checkout_id, **data):
-        checkout_id = from_global_id_strict_type(
-            checkout_id, only_type=Checkout, field="checkout_id"
-        )
-        checkout = models.Checkout.objects.prefetch_related(
-            "lines__variant__product__collections"
-        ).get(pk=checkout_id)
-
-        data = data["input"]
-
-        checkout_total = cls.calculate_total(info, checkout)
-        amount = data.get("amount", checkout_total.gross.amount)
-
-        cls.clean_billing_address(checkout.billing_address)
-        cls.clean_payment_amount(info, checkout_total, amount)
-
         extra_data = {"customer_user_agent": info.context.META.get("HTTP_USER_AGENT")}
 
         payment = create_payment(
@@ -126,6 +111,7 @@ class CheckoutPaymentCreate(BaseMutation, I18nMixin):
             total=amount,
             currency=settings.DEFAULT_CURRENCY,
             email=checkout.email,
+            billing_address=billing_address,
             extra_data=extra_data,
             customer_ip_address=get_client_ip(info.context),
             checkout=checkout,
@@ -142,7 +128,7 @@ class PaymentCapture(BaseMutation):
 
     class Meta:
         description = "Captures the authorized payment amount."
-        permissions = (OrderPermissions.MANAGE_ORDERS,)
+        permissions = ("order.manage_orders",)
         error_type_class = common_types.PaymentError
         error_type_field = "payment_errors"
 
@@ -161,7 +147,7 @@ class PaymentCapture(BaseMutation):
 class PaymentRefund(PaymentCapture):
     class Meta:
         description = "Refunds the captured payment amount."
-        permissions = (OrderPermissions.MANAGE_ORDERS,)
+        permissions = ("order.manage_orders",)
         error_type_class = common_types.PaymentError
         error_type_field = "payment_errors"
 
@@ -185,7 +171,7 @@ class PaymentVoid(BaseMutation):
 
     class Meta:
         description = "Voids the authorized payment."
-        permissions = (OrderPermissions.MANAGE_ORDERS,)
+        permissions = ("order.manage_orders",)
         error_type_class = common_types.PaymentError
         error_type_field = "payment_errors"
 

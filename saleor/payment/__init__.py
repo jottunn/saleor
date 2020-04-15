@@ -1,14 +1,12 @@
 from enum import Enum
 
+from django.utils.translation import pgettext_lazy
+
 
 class PaymentError(Exception):
-    def __init__(self, message, code=None):
-        super(PaymentError, self).__init__(message, code)
+    def __init__(self, message):
+        super(PaymentError, self).__init__(message)
         self.message = message
-        self.code = code
-
-    def __str__(self):
-        return self.message
 
 
 class GatewayError(IOError):
@@ -18,7 +16,7 @@ class GatewayError(IOError):
 class CustomPaymentChoices:
     MANUAL = "manual"
 
-    CHOICES = [(MANUAL, "Manual")]
+    CHOICES = [(MANUAL, pgettext_lazy("Custom payment choice type", "Manual"))]
 
 
 class OperationType(Enum):
@@ -66,11 +64,11 @@ class TransactionKind:
     # Which were authorized, but needs to be confirmed manually by staff
     # eg. Braintree with "submit_for_settlement" enabled
     CHOICES = [
-        (AUTH, "Authorization"),
-        (REFUND, "Refund"),
-        (CAPTURE, "Capture"),
-        (VOID, "Void"),
-        (CONFIRM, "Confirm"),
+        (AUTH, pgettext_lazy("transaction kind", "Authorization")),
+        (REFUND, pgettext_lazy("transaction kind", "Refund")),
+        (CAPTURE, pgettext_lazy("transaction kind", "Capture")),
+        (VOID, pgettext_lazy("transaction kind", "Void")),
+        (CONFIRM, pgettext_lazy("transaction kind", "Confirm")),
     ]
 
 
@@ -94,9 +92,9 @@ class ChargeStatus:
     FULLY_REFUNDED = "fully-refunded"
 
     CHOICES = [
-        (NOT_CHARGED, "Not charged"),
-        (PARTIALLY_CHARGED, "Partially charged"),
-        (FULLY_CHARGED, "Fully charged"),
-        (PARTIALLY_REFUNDED, "Partially refunded"),
-        (FULLY_REFUNDED, "Fully refunded"),
+        (NOT_CHARGED, pgettext_lazy("payment status", "Not charged")),
+        (PARTIALLY_CHARGED, pgettext_lazy("payment status", "Partially charged")),
+        (FULLY_CHARGED, pgettext_lazy("payment status", "Fully charged")),
+        (PARTIALLY_REFUNDED, pgettext_lazy("payment status", "Partially refunded")),
+        (FULLY_REFUNDED, pgettext_lazy("payment status", "Fully refunded")),
     ]

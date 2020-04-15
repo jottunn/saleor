@@ -1,13 +1,12 @@
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Type
+from typing import Dict, List, Optional
 
 import graphene
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Model, QuerySet
 
-from ...core.permissions import MenuPermissions, SitePermissions
 from ...menu import models
 from ...menu.error_codes import MenuErrorCode
 from ...menu.utils import update_menu
@@ -64,7 +63,7 @@ class MenuCreate(ModelMutation):
     class Meta:
         description = "Creates a new Menu."
         model = models.Menu
-        permissions = (MenuPermissions.MANAGE_MENUS,)
+        permissions = ("menu.manage_menus",)
         error_type_class = MenuError
         error_type_field = "menu_errors"
 
@@ -132,7 +131,7 @@ class MenuUpdate(ModelMutation):
     class Meta:
         description = "Updates a menu."
         model = models.Menu
-        permissions = (MenuPermissions.MANAGE_MENUS,)
+        permissions = ("menu.manage_menus",)
         error_type_class = MenuError
         error_type_field = "menu_errors"
 
@@ -144,28 +143,24 @@ class MenuDelete(ModelDeleteMutation):
     class Meta:
         description = "Deletes a menu."
         model = models.Menu
-        permissions = (MenuPermissions.MANAGE_MENUS,)
+        permissions = ("menu.manage_menus",)
         error_type_class = MenuError
         error_type_field = "menu_errors"
 
 
 def _validate_menu_item_instance(
-    cleaned_input: dict, field: str, expected_model: Type[Model]
+    cleaned_input: dict, field: str, expected_model: Model
 ):
     """Check if the value to assign as a menu item matches the expected model."""
     item = cleaned_input.get(field)
-    if item:
+    if item is not None:
         if not isinstance(item, expected_model):
             msg = (
                 f"Enter a valid {expected_model._meta.verbose_name} ID "
                 f"(got {item._meta.verbose_name} ID)."
             )
             raise ValidationError(
-                {
-                    field: ValidationError(
-                        msg, code=MenuErrorCode.INVALID_MENU_ITEM.value
-                    )
-                }
+                {field: ValidationError(msg, code=MenuErrorCode.INVALID_MENU_ITEM)}
             )
 
 
@@ -182,7 +177,7 @@ class MenuItemCreate(ModelMutation):
     class Meta:
         description = "Creates a new menu item."
         model = models.MenuItem
-        permissions = (MenuPermissions.MANAGE_MENUS,)
+        permissions = ("menu.manage_menus",)
         error_type_class = MenuError
         error_type_field = "menu_errors"
 
@@ -229,7 +224,7 @@ class MenuItemUpdate(MenuItemCreate):
     class Meta:
         description = "Updates a menu item."
         model = models.MenuItem
-        permissions = (MenuPermissions.MANAGE_MENUS,)
+        permissions = ("menu.manage_menus",)
         error_type_class = MenuError
         error_type_field = "menu_errors"
 
@@ -250,7 +245,7 @@ class MenuItemDelete(ModelDeleteMutation):
     class Meta:
         description = "Deletes a menu item."
         model = models.MenuItem
-        permissions = (MenuPermissions.MANAGE_MENUS,)
+        permissions = ("menu.manage_menus",)
         error_type_class = MenuError
         error_type_field = "menu_errors"
 
@@ -280,7 +275,7 @@ class MenuItemMove(BaseMutation):
 
     class Meta:
         description = "Moves items of menus."
-        permissions = (MenuPermissions.MANAGE_MENUS,)
+        permissions = ("menu.manage_menus",)
         error_type_class = MenuError
         error_type_field = "menu_errors"
 
@@ -293,7 +288,7 @@ class MenuItemMove(BaseMutation):
                     {
                         "parent_id": ValidationError(
                             "Cannot assign a node to itself.",
-                            code=MenuErrorCode.CANNOT_ASSIGN_NODE.value,
+                            code=MenuErrorCode.CANNOT_ASSIGN_NODE,
                         )
                     }
                 )
@@ -311,7 +306,7 @@ class MenuItemMove(BaseMutation):
                                 "Cannot assign a node as child of "
                                 "one of its descendants."
                             ),
-                            code=MenuErrorCode.CANNOT_ASSIGN_NODE.value,
+                            code=MenuErrorCode.CANNOT_ASSIGN_NODE,
                         )
                     }
                 )
@@ -375,9 +370,7 @@ class MenuItemMove(BaseMutation):
 
     @classmethod
     @transaction.atomic
-    def perform_mutation(cls, _root, info, **data):
-        menu: str = data["menu"]
-        moves: List[MenuItemMoveInput] = data["moves"]
+    def perform_mutation(cls, _root, info, menu: str, moves):
         qs = models.Menu.objects.prefetch_related("items")
         menu = cls.get_node_or_error(info, menu, only_type=Menu, field="menu", qs=qs)
 
@@ -414,7 +407,7 @@ class AssignNavigation(BaseMutation):
 
     class Meta:
         description = "Assigns storefront's navigation menus."
-        permissions = (MenuPermissions.MANAGE_MENUS, SitePermissions.MANAGE_SETTINGS)
+        permissions = ("menu.manage_menus", "site.manage_settings")
         error_type_class = MenuError
         error_type_field = "menu_errors"
 

@@ -4,7 +4,6 @@ from django.urls import reverse
 from django.utils.html import strip_tags
 from django.utils.translation import pgettext_lazy
 from draftjs_sanitizer import clean_draft_js
-from ckeditor_uploader.fields import RichTextUploadingField
 
 from ..core.db.fields import SanitizedJSONField
 from ..core.models import PublishableModel, PublishedQuerySet
@@ -23,7 +22,7 @@ class PagePublishedQuerySet(PublishedQuerySet):
 class Page(SeoModel, PublishableModel):
     slug = models.SlugField(unique=True, max_length=100)
     title = models.CharField(max_length=200)
-    content = RichTextUploadingField(blank=True)
+    content = models.TextField(blank=True)
     content_json = SanitizedJSONField(
         blank=True, default=dict, sanitizer=clean_draft_js
     )

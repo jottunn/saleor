@@ -2,18 +2,12 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, List
 
 if TYPE_CHECKING:
-    # flake8: noqa
-    from saleor.payment.interface import (
-        PaymentData,
-        GatewayResponse,
-        TokenConfig,
-        CustomerSource,
-    )
+    from saleor.payment.interface import PaymentData, GatewayResponse, TokenConfig
 
 
 class PaymentInterface(ABC):
     @abstractmethod
-    def list_payment_gateways(self, active_only: bool) -> List[dict]:
+    def list_payment_gateways(self, active_only: bool) -> List[str]:
         pass
 
     @abstractmethod
@@ -53,6 +47,12 @@ class PaymentInterface(ABC):
         pass
 
     @abstractmethod
+    def create_payment_form(
+        self, data, gateway: str, payment_information: "PaymentData"
+    ) -> "GatewayResponse":
+        pass
+
+    @abstractmethod
     def get_client_token(self, gateway: str, token_config: "TokenConfig") -> str:
         pass
 
@@ -60,4 +60,8 @@ class PaymentInterface(ABC):
     def list_payment_sources(
         self, gateway: str, customer_id: str
     ) -> List["CustomerSource"]:
+        pass
+
+    @abstractmethod
+    def get_payment_template(self, gateway: str) -> str:
         pass

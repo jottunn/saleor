@@ -7,7 +7,8 @@ from ..core import types
 from ..core.connection import CountableDjangoObjectType
 from ..core.fields import PrefetchingConnectionField
 from ..product.types import Category, Collection, Product
-from ..translations.fields import TranslationField
+from ..translations.enums import LanguageCodeEnum
+from ..translations.resolvers import resolve_translation
 from ..translations.types import SaleTranslation, VoucherTranslation
 from .enums import DiscountValueTypeEnum, VoucherTypeEnum
 
@@ -31,7 +32,16 @@ class Sale(CountableDjangoObjectType):
         ),
         model_field="products",
     )
-    translation = TranslationField(SaleTranslation, type_name="sale")
+    translation = graphene.Field(
+        SaleTranslation,
+        language_code=graphene.Argument(
+            LanguageCodeEnum,
+            description="A language code to return the translation for.",
+            required=True,
+        ),
+        description="Returns translated sale fields for the given language code.",
+        resolver=resolve_translation,
+    )
 
     class Meta:
         description = (
@@ -78,12 +88,28 @@ class Voucher(CountableDjangoObjectType):
         types.CountryDisplay,
         description="List of countries available for the shipping voucher.",
     )
-    translation = TranslationField(VoucherTranslation, type_name="voucher")
+    translation = graphene.Field(
+        VoucherTranslation,
+        language_code=graphene.Argument(
+            LanguageCodeEnum,
+            description="A language code to return the translation for.",
+            required=True,
+        ),
+        description="Returns translated Voucher fields for the given language code.",
+        resolver=resolve_translation,
+    )
     discount_value_type = DiscountValueTypeEnum(
         description="Determines a type of discount for voucher - value or percentage",
         required=True,
     )
     type = VoucherTypeEnum(description="Determines a type of voucher.", required=True)
+    min_amount_spent = graphene.Field(
+        types.Money,
+        deprecation_reason=(
+            "DEPRECATED: Will be removed in Saleor 2.10, "
+            "use the minSpent field instead."
+        ),
+    )
 
     class Meta:
         description = (
@@ -128,3 +154,7 @@ class Voucher(CountableDjangoObjectType):
             types.CountryDisplay(code=country.code, country=country.name)
             for country in root.countries
         ]
+
+    @staticmethod
+    def resolve_min_amount_spent(root: models.Voucher, *_args, **_kwargs):
+        return root.min_spent

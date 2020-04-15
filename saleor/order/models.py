@@ -1,6 +1,5 @@
 from decimal import Decimal
 from operator import attrgetter
-from typing import Optional
 from uuid import uuid4
 
 from django.conf import settings
@@ -8,7 +7,9 @@ from django.contrib.postgres.fields import JSONField
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import F, Max, Sum
+from django.urls import reverse
 from django.utils.timezone import now
+from django.utils.translation import pgettext_lazy
 from django_measurement.models import MeasurementField
 from django_prices.models import MoneyField, TaxedMoneyField
 from measurement.measures import Weight
@@ -16,7 +17,6 @@ from prices import Money
 
 from ..account.models import Address
 from ..core.models import ModelWithMetadata
-from ..core.permissions import OrderPermissions
 from ..core.taxes import zero_money, zero_taxed_money
 from ..core.utils.json_serializer import CustomJsonEncoder
 from ..core.weight import WeightUnits, zero_weight
@@ -161,8 +161,8 @@ class Order(ModelWithMetadata):
         default=0,
     )
     discount = MoneyField(amount_field="discount_amount", currency_field="currency")
-    discount_name = models.CharField(max_length=255, blank=True, null=True)
-    translated_discount_name = models.CharField(max_length=255, blank=True, null=True)
+    discount_name = models.CharField(max_length=255, default="", blank=True)
+    translated_discount_name = models.CharField(max_length=255, default="", blank=True)
     display_gross_prices = models.BooleanField(default=True)
     customer_note = models.TextField(blank=True, default="")
     weight = MeasurementField(
@@ -172,7 +172,12 @@ class Order(ModelWithMetadata):
 
     class Meta:
         ordering = ("-pk",)
-        permissions = ((OrderPermissions.MANAGE_ORDERS.codename, "Manage orders."),)
+        permissions = (
+            (
+                "manage_orders",
+                pgettext_lazy("Permission description", "Manage orders."),
+            ),
+        )
 
     def save(self, *args, **kwargs):
         if not self.token:
@@ -218,6 +223,9 @@ class Order(ModelWithMetadata):
 
     def __str__(self):
         return "#%d" % (self.id,)
+
+    def get_absolute_url(self):
+        return reverse("order:details", kwargs={"token": self.token})
 
     def get_last_payment(self):
         return max(self.payments.all(), default=None, key=attrgetter("pk"))
@@ -274,6 +282,14 @@ class Order(ModelWithMetadata):
             return False
         order_status_ok = self.status not in {OrderStatus.DRAFT, OrderStatus.CANCELED}
         return payment.can_capture() and order_status_ok
+
+    def can_charge(self, payment=None):
+        if not payment:
+            payment = self.get_last_payment()
+        if not payment:
+            return False
+        order_status_ok = self.status not in {OrderStatus.DRAFT, OrderStatus.CANCELED}
+        return payment.can_charge() and order_status_ok
 
     def can_void(self, payment=None):
         if not payment:
@@ -406,10 +422,8 @@ class OrderLine(models.Model):
         return self.quantity - self.quantity_fulfilled
 
     @property
-    def is_digital(self) -> Optional[bool]:
+    def is_digital(self) -> bool:
         """Check if a variant is digital and contains digital content."""
-        if not self.variant:
-            return None
         is_digital = self.variant.is_digital()
         has_digital = hasattr(self.variant, "digital_content")
         return is_digital and has_digital
@@ -426,10 +440,10 @@ class Fulfillment(ModelWithMetadata):
         choices=FulfillmentStatus.CHOICES,
     )
     tracking_number = models.CharField(max_length=255, default="", blank=True)
-    created = models.DateTimeField(auto_now_add=True)
+    shipping_date = models.DateTimeField(default=now, editable=False)
 
     def __str__(self):
-        return f"Fulfillment #{self.composed_id}"
+        return pgettext_lazy("Fulfillment str", "Fulfillment #%s") % (self.composed_id,)
 
     def __iter__(self):
         return iter(self.lines.all())
@@ -495,10 +509,3 @@ class OrderEvent(models.Model):
 
     def __repr__(self):
         return f"{self.__class__.__name__}(type={self.type!r}, user={self.user!r})"
-
-
-class Invoice(models.Model):
-    order = models.ForeignKey(Order, null=True, on_delete=models.SET_NULL)
-    number = models.CharField(max_length=255)
-    created = models.DateTimeField(auto_now_add=True)
-    url = models.URLField(max_length=2048)

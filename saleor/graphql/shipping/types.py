@@ -5,16 +5,25 @@ from graphene import relay
 from ...shipping import models
 from ..core.connection import CountableDjangoObjectType
 from ..core.types import CountryDisplay, MoneyRange
-from ..translations.fields import TranslationField
+from ..translations.enums import LanguageCodeEnum
+from ..translations.resolvers import resolve_translation
 from ..translations.types import ShippingMethodTranslation
-from ..warehouse.types import Warehouse
 from .enums import ShippingMethodTypeEnum
 
 
 class ShippingMethod(CountableDjangoObjectType):
     type = ShippingMethodTypeEnum(description="Type of the shipping method.")
-    translation = TranslationField(
-        ShippingMethodTranslation, type_name="shipping method"
+    translation = graphene.Field(
+        ShippingMethodTranslation,
+        language_code=graphene.Argument(
+            LanguageCodeEnum,
+            description="A language code to return the translation for.",
+            required=True,
+        ),
+        description=(
+            "Returns translated shipping method fields " "for the given language code."
+        ),
+        resolver=resolve_translation,
     )
 
     class Meta:
@@ -52,9 +61,6 @@ class ShippingZone(CountableDjangoObjectType):
         ),
         model_field="shipping_methods",
     )
-    warehouses = graphene.List(
-        Warehouse, description="List of warehouses for shipping zone."
-    )
 
     class Meta:
         description = (
@@ -80,7 +86,3 @@ class ShippingZone(CountableDjangoObjectType):
     @staticmethod
     def resolve_shipping_methods(root: models.ShippingZone, *_args):
         return root.shipping_methods.all()
-
-    @staticmethod
-    def resolve_warehouses(root: models.ShippingZone, *_args):
-        return root.warehouses.all()

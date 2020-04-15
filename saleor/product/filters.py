@@ -6,6 +6,7 @@ from typing import Dict, Iterable
 
 from django.db.models import Q, QuerySet
 from django.forms import CheckboxSelectMultiple
+from django.utils.translation import pgettext_lazy
 from django_filters import MultipleChoiceFilter, OrderingFilter, RangeFilter
 
 from ..core.filters import SortedFilterSet
@@ -13,9 +14,12 @@ from .models import Attribute, Product
 
 SORT_BY_FIELDS = OrderedDict(
     [
-        ("name", "name"),
-        ("minimal_variant_price_amount", "price"),
-        ("updated_at", "last updated"),
+        ("name", pgettext_lazy("Product list sorting option", "name")),
+        (
+            "minimal_variant_price_amount",
+            pgettext_lazy("Product list sorting option", "price"),
+        ),
+        ("updated_at", pgettext_lazy("Product list sorting option", "last updated")),
     ]
 )
 
@@ -47,10 +51,13 @@ class AttributeValuesFilter(MultipleChoiceFilter):
 
 class ProductFilter(SortedFilterSet):
     sort_by = OrderingFilter(
-        label="Sort by", fields=SORT_BY_FIELDS.keys(), field_labels=SORT_BY_FIELDS,
+        label=pgettext_lazy("Product list sorting form", "Sort by"),
+        fields=SORT_BY_FIELDS.keys(),
+        field_labels=SORT_BY_FIELDS,
     )
     minimal_variant_price = RangeFilter(
-        label="Price", field_name="minimal_variant_price_amount",
+        label=pgettext_lazy("Currency amount", "Price"),
+        field_name="minimal_variant_price_amount",
     )
 
     class Meta:
@@ -133,3 +140,29 @@ class ProductFilter(SortedFilterSet):
         if attribute_values:
             queryset = filter_products_by_attributes_values(queryset, attribute_values)
         return queryset
+
+
+class ProductCategoryFilter(ProductFilter):
+    def __init__(self, *args, **kwargs):
+        self.category = kwargs.pop("category")
+        super().__init__(*args, **kwargs)
+
+    def _get_product_attributes_lookup(self):
+        categories = self.category.get_descendants(include_self=True)
+        return Q(product_types__products__category__in=categories)
+
+    def _get_variant_attributes_lookup(self):
+        categories = self.category.get_descendants(include_self=True)
+        return Q(product_variant_types__products__category__in=categories)
+
+
+class ProductCollectionFilter(ProductFilter):
+    def __init__(self, *args, **kwargs):
+        self.collection = kwargs.pop("collection")
+        super().__init__(*args, **kwargs)
+
+    def _get_product_attributes_lookup(self):
+        return Q(product_types__products__collections=self.collection)
+
+    def _get_variant_attributes_lookup(self):
+        return Q(product_variant_types__products__collections=self.collection)

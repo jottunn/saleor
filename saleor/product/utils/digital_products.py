@@ -7,7 +7,7 @@ from ...account import events as account_events
 from ..models import DigitalContentUrl
 
 
-def get_default_digital_content_settings() -> dict:
+def get_default_digital_content_settings():
     site = Site.objects.get_current()
     settings = site.settings
     return {
@@ -42,14 +42,14 @@ def digital_content_url_is_valid(content_url: DigitalContentUrl) -> bool:
     return True
 
 
-def increment_download_count(content_url: DigitalContentUrl):
-    content_url.download_num += 1
-    content_url.save(update_fields=["download_num"])
+def increment_download_count(self: DigitalContentUrl):
+    self.download_num += 1
+    self.save(update_fields=["download_num"])
 
-    line = content_url.line
+    line = self.line
     user = line.order.user if line else None
 
-    if user and line:
+    if user is not None:
         account_events.customer_downloaded_a_digital_link_event(
             user=user, order_line=line
         )

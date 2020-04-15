@@ -56,7 +56,6 @@
 
 {% block content %}
   <form method="post" class="card">
-    {{ form.media }}
     {% csrf_token %}
     <div class="row">
       <div class="card-content">
@@ -65,7 +64,7 @@
             {{ form.title|materializecss }}
           </div>
           <div class="row">
-            {{ form.content }}
+            {{ form.content|materializecss }}
           </div>
           {% include "dashboard/includes/_google_preview.html" with object=page form=form %}
         </div>

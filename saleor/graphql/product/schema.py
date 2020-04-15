@@ -1,9 +1,9 @@
 import graphene
 
-from ...core.permissions import ProductPermissions
 from ..core.enums import ReportingPeriod
 from ..core.fields import FilterInputConnectionField, PrefetchingConnectionField
 from ..decorators import permission_required
+from ..descriptions import DESCRIPTIONS
 from ..translations.mutations import (
     AttributeTranslate,
     AttributeValueTranslate,
@@ -23,9 +23,6 @@ from .bulk_mutations.products import (
     ProductTypeBulkDelete,
     ProductVariantBulkCreate,
     ProductVariantBulkDelete,
-    ProductVariantStocksCreate,
-    ProductVariantStocksDelete,
-    ProductVariantStocksUpdate,
 )
 from .enums import StockAvailability
 from .filters import (
@@ -113,22 +110,18 @@ from .resolvers import (
     resolve_products,
     resolve_report_product_sales,
 )
-from .sorters import (
-    AttributeSortingInput,
-    CategorySortingInput,
-    CollectionSortingInput,
-    ProductOrder,
-    ProductTypeSortingInput,
-)
+from .scalars import AttributeScalar
 from .types import (
     Attribute,
     Category,
     Collection,
     DigitalContent,
     Product,
+    ProductOrder,
     ProductType,
     ProductVariant,
 )
+from .types.attributes import AttributeSortingInput
 
 
 class ProductQueries(graphene.ObjectType):
@@ -145,8 +138,27 @@ class ProductQueries(graphene.ObjectType):
     attributes = FilterInputConnectionField(
         Attribute,
         description="List of the shop's attributes.",
+        query=graphene.String(description=DESCRIPTIONS["attributes"]),
+        in_category=graphene.Argument(
+            graphene.ID,
+            description=(
+                "Return attributes for products belonging to the given category. "
+                "DEPRECATED: Will be removed in Saleor 2.10, use the `filter` field "
+                "instead."
+            ),
+        ),
+        in_collection=graphene.Argument(
+            graphene.ID,
+            description=(
+                "Return attributes for products belonging to the given collection. "
+                "DEPRECATED: Will be removed in Saleor 2.10, use the `filter` "
+                "field instead."
+            ),
+        ),
         filter=AttributeFilterInput(description="Filtering options for attributes."),
-        sort_by=AttributeSortingInput(description="Sorting options for attributes."),
+        sort_by=graphene.Argument(
+            AttributeSortingInput, description="Sorting options for attributes."
+        ),
     )
     attribute = graphene.Field(
         Attribute,
@@ -157,8 +169,8 @@ class ProductQueries(graphene.ObjectType):
     )
     categories = FilterInputConnectionField(
         Category,
+        query=graphene.String(description=DESCRIPTIONS["category"]),
         filter=CategoryFilterInput(description="Filtering options for categories."),
-        sort_by=CategorySortingInput(description="Sort categories."),
         level=graphene.Argument(
             graphene.Int,
             description="Filter categories by the nesting level in the category tree.",
@@ -182,7 +194,7 @@ class ProductQueries(graphene.ObjectType):
     collections = FilterInputConnectionField(
         Collection,
         filter=CollectionFilterInput(description="Filtering options for collections."),
-        sort_by=CollectionSortingInput(description="Sort collections."),
+        query=graphene.String(description=DESCRIPTIONS["collection"]),
         description="List of the shop's collections.",
     )
     product = graphene.Field(
@@ -195,15 +207,32 @@ class ProductQueries(graphene.ObjectType):
     products = FilterInputConnectionField(
         Product,
         filter=ProductFilterInput(description="Filtering options for products."),
-        sort_by=ProductOrder(description="Sort products."),
-        stock_availability=graphene.Argument(
-            StockAvailability,
+        attributes=graphene.List(
+            AttributeScalar,
             description=(
-                "Filter products by stock availability."
-                "DEPRECATED: Will be removed in Saleor 2.11, "
-                "use the `filter` field instead."
+                "Filter products by attributes. DEPRECATED: Will be removed in "
+                "Saleor 2.10, use the `filter` field instead."
             ),
         ),
+        categories=graphene.List(
+            graphene.ID,
+            description=(
+                "Filter products by category. DEPRECATED: Will be removed in "
+                "Saleor 2.10, use the `filter` field instead."
+            ),
+        ),
+        collections=graphene.List(
+            graphene.ID,
+            description=(
+                "Filter products by collections. DEPRECATED: Will be removed in "
+                "Saleor 2.10, use the `filter` field instead."
+            ),
+        ),
+        sort_by=graphene.Argument(ProductOrder, description="Sort products."),
+        stock_availability=graphene.Argument(
+            StockAvailability, description="Filter products by stock availability."
+        ),
+        query=graphene.String(description=DESCRIPTIONS["product"]),
         description="List of the shop's products.",
     )
     product_type = graphene.Field(
@@ -218,7 +247,7 @@ class ProductQueries(graphene.ObjectType):
         filter=ProductTypeFilterInput(
             description="Filtering options for product types."
         ),
-        sort_by=ProductTypeSortingInput(description="Sort product types."),
+        query=graphene.String(description=DESCRIPTIONS["product_type"]),
         description="List of the shop's product types.",
     )
     product_variant = graphene.Field(
@@ -249,8 +278,8 @@ class ProductQueries(graphene.ObjectType):
     def resolve_attribute(self, info, id):
         return graphene.Node.get_node_from_global_id(info, id, Attribute)
 
-    def resolve_categories(self, info, level=None, query=None, **kwargs):
-        return resolve_categories(info, level=level, query=query, **kwargs)
+    def resolve_categories(self, info, level=None, query=None, **_kwargs):
+        return resolve_categories(info, level=level, query=query)
 
     def resolve_category(self, info, id):
         return graphene.Node.get_node_from_global_id(info, id, Category)
@@ -258,14 +287,14 @@ class ProductQueries(graphene.ObjectType):
     def resolve_collection(self, info, id):
         return graphene.Node.get_node_from_global_id(info, id, Collection)
 
-    def resolve_collections(self, info, query=None, **kwargs):
-        return resolve_collections(info, query, **kwargs)
+    def resolve_collections(self, info, query=None, **_kwargs):
+        return resolve_collections(info, query)
 
-    @permission_required(ProductPermissions.MANAGE_PRODUCTS)
+    @permission_required("product.manage_products")
     def resolve_digital_content(self, info, id):
         return graphene.Node.get_node_from_global_id(info, id, DigitalContent)
 
-    @permission_required(ProductPermissions.MANAGE_PRODUCTS)
+    @permission_required("product.manage_products")
     def resolve_digital_contents(self, info, **_kwargs):
         return resolve_digital_contents(info)
 
@@ -278,8 +307,8 @@ class ProductQueries(graphene.ObjectType):
     def resolve_product_type(self, info, id):
         return graphene.Node.get_node_from_global_id(info, id, ProductType)
 
-    def resolve_product_types(self, info, query=None, **kwargs):
-        return resolve_product_types(info, query, **kwargs)
+    def resolve_product_types(self, info, query=None, **_kwargs):
+        return resolve_product_types(info, query)
 
     def resolve_product_variant(self, info, id):
         return graphene.Node.get_node_from_global_id(info, id, ProductVariant)
@@ -287,7 +316,7 @@ class ProductQueries(graphene.ObjectType):
     def resolve_product_variants(self, info, ids=None, **_kwargs):
         return resolve_product_variants(info, ids)
 
-    @permission_required(ProductPermissions.MANAGE_PRODUCTS)
+    @permission_required(["order.manage_orders", "product.manage_products"])
     def resolve_report_product_sales(self, *_args, period, **_kwargs):
         return resolve_report_product_sales(period)
 
@@ -300,28 +329,10 @@ class ProductMutations(graphene.ObjectType):
     attribute_unassign = AttributeUnassign.Field()
     attribute_update = AttributeUpdate.Field()
     attribute_translate = AttributeTranslate.Field()
-    attribute_update_metadata = AttributeUpdateMeta.Field(
-        deprecation_reason=(
-            "Will be removed in Saleor 2.11. Use the `UpdateMetadata` mutation instead."
-        )
-    )
-    attribute_clear_metadata = AttributeClearMeta.Field(
-        deprecation_reason=(
-            "Will be removed in Saleor 2.11. Use the `DeleteMetadata` mutation instead."
-        )
-    )
-    attribute_update_private_metadata = AttributeUpdatePrivateMeta.Field(
-        deprecation_reason=(
-            "Will be removed in Saleor 2.11."
-            "Use the `UpdatePrivateMetadata` mutation instead."
-        )
-    )
-    attribute_clear_private_metadata = AttributeClearPrivateMeta.Field(
-        deprecation_reason=(
-            "Will be removed in Saleor 2.11."
-            "Use the `DeletePrivateMetadata` mutation instead."
-        )
-    )
+    attribute_update_metadata = AttributeUpdateMeta.Field()
+    attribute_clear_metadata = AttributeClearMeta.Field()
+    attribute_update_private_metadata = AttributeUpdatePrivateMeta.Field()
+    attribute_clear_private_metadata = AttributeClearPrivateMeta.Field()
 
     attribute_value_create = AttributeValueCreate.Field()
     attribute_value_delete = AttributeValueDelete.Field()
@@ -335,28 +346,10 @@ class ProductMutations(graphene.ObjectType):
     category_bulk_delete = CategoryBulkDelete.Field()
     category_update = CategoryUpdate.Field()
     category_translate = CategoryTranslate.Field()
-    category_update_metadata = CategoryUpdateMeta.Field(
-        deprecation_reason=(
-            "Will be removed in Saleor 2.11. Use the `UpdateMetadata` mutation instead."
-        )
-    )
-    category_clear_metadata = CategoryClearMeta.Field(
-        deprecation_reason=(
-            "Will be removed in Saleor 2.11. Use the `DeleteMetadata` mutation instead."
-        )
-    )
-    category_update_private_metadata = CategoryUpdatePrivateMeta.Field(
-        deprecation_reason=(
-            "Will be removed in Saleor 2.11."
-            "Use the `UpdatePrivateMetadata` mutation instead."
-        )
-    )
-    category_clear_private_metadata = CategoryClearPrivateMeta.Field(
-        deprecation_reason=(
-            "Will be removed in Saleor 2.11."
-            "Use the `DeletePrivateMetadata` mutation instead."
-        )
-    )
+    category_update_metadata = CategoryUpdateMeta.Field()
+    category_clear_metadata = CategoryClearMeta.Field()
+    category_update_private_metadata = CategoryUpdatePrivateMeta.Field()
+    category_clear_private_metadata = CategoryClearPrivateMeta.Field()
 
     collection_add_products = CollectionAddProducts.Field()
     collection_create = CollectionCreate.Field()
@@ -367,28 +360,10 @@ class ProductMutations(graphene.ObjectType):
     collection_remove_products = CollectionRemoveProducts.Field()
     collection_update = CollectionUpdate.Field()
     collection_translate = CollectionTranslate.Field()
-    collection_update_metadata = CollectionUpdateMeta.Field(
-        deprecation_reason=(
-            "Will be removed in Saleor 2.11. Use the `UpdateMetadata` mutation instead."
-        )
-    )
-    collection_clear_metadata = CollectionClearMeta.Field(
-        deprecation_reason=(
-            "Will be removed in Saleor 2.11. Use the `DeleteMetadata` mutation instead."
-        )
-    )
-    collection_update_private_metadata = CollectionUpdatePrivateMeta.Field(
-        deprecation_reason=(
-            "Will be removed in Saleor 2.11."
-            "Use the `UpdatePrivateMetadata` mutation instead."
-        )
-    )
-    collection_clear_private_metadata = CollectionClearPrivateMeta.Field(
-        deprecation_reason=(
-            "Will be removed in Saleor 2.11."
-            "Use the `DeletePrivateMetadata` mutation instead."
-        )
-    )
+    collection_update_metadata = CollectionUpdateMeta.Field()
+    collection_clear_metadata = CollectionClearMeta.Field()
+    collection_update_private_metadata = CollectionUpdatePrivateMeta.Field()
+    collection_clear_private_metadata = CollectionClearPrivateMeta.Field()
 
     product_create = ProductCreate.Field()
     product_delete = ProductDelete.Field()
@@ -396,28 +371,10 @@ class ProductMutations(graphene.ObjectType):
     product_bulk_publish = ProductBulkPublish.Field()
     product_update = ProductUpdate.Field()
     product_translate = ProductTranslate.Field()
-    product_update_metadata = ProductUpdateMeta.Field(
-        deprecation_reason=(
-            "Will be removed in Saleor 2.11. Use the `UpdateMetadata` mutation instead."
-        )
-    )
-    product_clear_metadata = ProductClearMeta.Field(
-        deprecation_reason=(
-            "Will be removed in Saleor 2.11. Use the `DeleteMetadata` mutation instead."
-        )
-    )
-    product_update_private_metadata = ProductUpdatePrivateMeta.Field(
-        deprecation_reason=(
-            "Will be removed in Saleor 2.11."
-            "Use the `UpdatePrivateMetadata` mutation instead."
-        )
-    )
-    product_clear_private_metadata = ProductClearPrivateMeta.Field(
-        deprecation_reason=(
-            "Will be removed in Saleor 2.11."
-            "Use the `DeletePrivateMetadata` mutation instead."
-        )
-    )
+    product_update_metadata = ProductUpdateMeta.Field()
+    product_clear_metadata = ProductClearMeta.Field()
+    product_update_private_metadata = ProductUpdatePrivateMeta.Field()
+    product_clear_private_metadata = ProductClearPrivateMeta.Field()
 
     product_image_create = ProductImageCreate.Field()
     product_image_delete = ProductImageDelete.Field()
@@ -431,28 +388,10 @@ class ProductMutations(graphene.ObjectType):
     product_type_update = ProductTypeUpdate.Field()
     product_type_reorder_attributes = ProductTypeReorderAttributes.Field()
 
-    product_type_update_metadata = ProductTypeUpdateMeta.Field(
-        deprecation_reason=(
-            "Will be removed in Saleor 2.11. Use the `UpdateMetadata` mutation instead."
-        )
-    )
-    product_type_clear_metadata = ProductTypeClearMeta.Field(
-        deprecation_reason=(
-            "Will be removed in Saleor 2.11. Use the `DeleteMetadata` mutation instead."
-        )
-    )
-    product_type_update_private_metadata = ProductTypeUpdatePrivateMeta.Field(
-        deprecation_reason=(
-            "Will be removed in Saleor 2.11."
-            "Use the `UpdatePrivateMetadata` mutation instead."
-        )
-    )
-    product_type_clear_private_metadata = ProductTypeClearPrivateMeta.Field(
-        deprecation_reason=(
-            "Will be removed in Saleor 2.11."
-            "Use the `DeletePrivateMetadata` mutation instead."
-        )
-    )
+    product_type_update_metadata = ProductTypeUpdateMeta.Field()
+    product_type_clear_metadata = ProductTypeClearMeta.Field()
+    product_type_update_private_metadata = ProductTypeUpdatePrivateMeta.Field()
+    product_type_clear_private_metadata = ProductTypeClearPrivateMeta.Field()
 
     digital_content_create = DigitalContentCreate.Field()
     digital_content_delete = DigitalContentDelete.Field()
@@ -464,33 +403,12 @@ class ProductMutations(graphene.ObjectType):
     product_variant_delete = ProductVariantDelete.Field()
     product_variant_bulk_create = ProductVariantBulkCreate.Field()
     product_variant_bulk_delete = ProductVariantBulkDelete.Field()
-    product_variant_stocks_create = ProductVariantStocksCreate.Field()
-    product_variant_stocks_delete = ProductVariantStocksDelete.Field()
-    product_variant_stocks_update = ProductVariantStocksUpdate.Field()
     product_variant_update = ProductVariantUpdate.Field()
     product_variant_translate = ProductVariantTranslate.Field()
-    product_variant_update_metadata = ProductVariantUpdateMeta.Field(
-        deprecation_reason=(
-            "Will be removed in Saleor 2.11. Use the `UpdateMetadata` mutation instead."
-        )
-    )
-    product_variant_clear_metadata = ProductVariantClearMeta.Field(
-        deprecation_reason=(
-            "Will be removed in Saleor 2.11. Use the `DeleteMetadata` mutation instead."
-        )
-    )
-    product_variant_update_private_metadata = ProductVariantUpdatePrivateMeta.Field(
-        deprecation_reason=(
-            "Will be removed in Saleor 2.11."
-            "Use the `UpdatePrivateMetadata` mutation instead."
-        )
-    )
-    product_variant_clear_private_metadata = ProductVariantClearPrivateMeta.Field(
-        deprecation_reason=(
-            "Will be removed in Saleor 2.11."
-            "Use the `DeletePrivateMetadata` mutation instead."
-        )
-    )
+    product_variant_update_metadata = ProductVariantUpdateMeta.Field()
+    product_variant_clear_metadata = ProductVariantClearMeta.Field()
+    product_variant_update_private_metadata = ProductVariantUpdatePrivateMeta.Field()
+    product_variant_clear_private_metadata = ProductVariantClearPrivateMeta.Field()
 
     variant_image_assign = VariantImageAssign.Field()
     variant_image_unassign = VariantImageUnassign.Field()

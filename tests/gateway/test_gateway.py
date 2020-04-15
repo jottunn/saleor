@@ -85,7 +85,7 @@ USED_GATEWAY = "Dummy"
 @pytest.fixture
 def mock_payment_interface(mocker, fake_payment_interface):
     mgr = mocker.patch(
-        "saleor.payment.gateway.get_plugins_manager",
+        "saleor.payment.gateway.get_extensions_manager",
         autospec=True,
         return_value=fake_payment_interface,
     )
@@ -229,16 +229,16 @@ def test_void_payment(mock_payment_interface, payment_txn_preauth):
     assert transaction.gateway_response == RAW_RESPONSE
 
 
-def test_confirm_payment(mock_payment_interface, payment_txn_to_confirm):
-    auth_transaction = payment_txn_to_confirm.transactions.get()
+def test_confirm_payment(mock_payment_interface, payment_txn_preauth):
+    auth_transaction = payment_txn_preauth.transactions.get()
     PAYMENT_DATA = create_payment_information(
-        payment=payment_txn_to_confirm,
+        payment=payment_txn_preauth,
         payment_token=auth_transaction.token,
         amount=CONFIRM_AMOUNT,
     )
     mock_payment_interface.confirm_payment.return_value = CONFIRM_RESPONSE
 
-    transaction = gateway.confirm(payment=payment_txn_to_confirm)
+    transaction = gateway.confirm(payment=payment_txn_preauth)
 
     mock_payment_interface.confirm_payment.assert_called_once_with(
         USED_GATEWAY, PAYMENT_DATA
@@ -250,7 +250,7 @@ def test_confirm_payment(mock_payment_interface, payment_txn_to_confirm):
 
 
 def test_list_gateways(mock_payment_interface):
-    gateways = [{"name": "Stripe"}, {"name": "Braintree"}]
+    gateways = ["Stripe", "Braintree"]
     mock_payment_interface.list_payment_gateways.return_value = gateways
     lst = gateway.list_gateways()
     mock_payment_interface.list_payment_gateways.assert_called_once()

@@ -1,53 +1,62 @@
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Iterable, Optional, Tuple, Union
+from collections import namedtuple
+from decimal import Decimal
+from typing import Iterable, Union
 
-from django.conf import settings
-from prices import TaxedMoney, TaxedMoneyRange
+from prices import TaxedMoneyRange
 
 from saleor.graphql.core.types import MoneyRange
 from saleor.product.models import Product, ProductVariant
 
 from ...core.utils import to_local_currency
 from ...discount import DiscountInfo
-from ...plugins.manager import get_plugins_manager
-from ...warehouse.availability import (
-    are_all_product_variants_in_stock,
-    is_product_in_stock,
-    is_variant_in_stock,
-)
+from ...extensions.manager import get_extensions_manager
 from .. import ProductAvailabilityStatus, VariantAvailabilityStatus
 
-if TYPE_CHECKING:
-    # flake8: noqa
-    from ...plugins.manager import PluginsManager
+ProductAvailability = namedtuple(
+    "ProductAvailability",
+    (
+        "available",
+        "on_sale",
+        "price_range",
+        "price_range_undiscounted",
+        "discount",
+        "price_range_local_currency",
+        "discount_local_currency",
+    ),
+)
+
+VariantAvailability = namedtuple(
+    "ProductAvailability",
+    (
+        "available",
+        "on_sale",
+        "price",
+        "price_undiscounted",
+        "discount",
+        "price_local_currency",
+        "discount_local_currency",
+    ),
+)
 
 
-@dataclass
-class ProductAvailability:
-    on_sale: bool
-    price_range: TaxedMoneyRange
-    price_range_undiscounted: TaxedMoneyRange
-    discount: Optional[TaxedMoney]
-    price_range_local_currency: Optional[TaxedMoneyRange]
-    discount_local_currency: Optional[TaxedMoneyRange]
+def products_with_availability(
+    products, discounts, country, local_currency, extensions
+):
+    for product in products:
+        yield (
+            product,
+            get_product_availability(
+                product, discounts, country, local_currency, extensions=extensions
+            ),
+        )
 
 
-@dataclass
-class VariantAvailability:
-    on_sale: bool
-    price: TaxedMoney
-    price_undiscounted: TaxedMoney
-    discount: Optional[TaxedMoney]
-    price_local_currency: Optional[TaxedMoney]
-    discount_local_currency: Optional[TaxedMoney]
-
-
-def get_product_availability_status(
-    product: "Product", country: str
-) -> ProductAvailabilityStatus:
+def get_product_availability_status(product):
     is_visible = product.is_visible
-    are_all_variants_in_stock = are_all_product_variants_in_stock(product, country)
-    is_in_stock = is_product_in_stock(product, country)
+    are_all_variants_in_stock = all(
+        variant.is_in_stock() for variant in product.variants.all()
+    )
+    is_in_stock = any(variant.is_in_stock() for variant in product.variants.all())
     requires_variants = product.product_type.has_variants
 
     if not product.is_published:
@@ -66,41 +75,34 @@ def get_product_availability_status(
     return ProductAvailabilityStatus.READY_FOR_PURCHASE
 
 
-def get_variant_availability_status(variant, country):
-    if not is_variant_in_stock(variant, country):
+def get_variant_availability_status(variant):
+    if not variant.is_in_stock():
         return VariantAvailabilityStatus.OUT_OF_STOCK
     return VariantAvailabilityStatus.AVAILABLE
 
 
-def _get_total_discount_from_range(
-    undiscounted: TaxedMoneyRange, discounted: TaxedMoneyRange
-) -> Optional[TaxedMoney]:
-    """Calculate the discount amount between two TaxedMoneyRange.
-
-    Subtract two prices and return their total discount, if any.
-    Otherwise, it returns None.
-    """
-    return _get_total_discount(undiscounted.start, discounted.start)
-
-
 def _get_total_discount(
-    undiscounted: TaxedMoney, discounted: TaxedMoney
-) -> Optional[TaxedMoney]:
-    """Calculate the discount amount between two TaxedMoney.
+    undiscounted: Union[MoneyRange, TaxedMoneyRange, Decimal],
+    discounted: Union[MoneyRange, TaxedMoneyRange, Decimal],
+):
+    """Calculate the discount amount between two amounts.
 
-    Subtract two prices and return their total discount, if any.
-    Otherwise, it returns None.
+    Subtract two prices that are whether a price range or decimal prices
+    and return their total discount, if any. Otherwise, it returns None.
     """
-    if undiscounted > discounted:
-        return undiscounted - discounted
+    if not isinstance(undiscounted, (MoneyRange, TaxedMoneyRange)):
+        if undiscounted > discounted:
+            return undiscounted - discounted
+    elif undiscounted.start > discounted.start:
+        return undiscounted.start - discounted.stop
     return None
 
 
 def _get_product_price_range(
     discounted: Union[MoneyRange, TaxedMoneyRange],
     undiscounted: Union[MoneyRange, TaxedMoneyRange],
-    local_currency: Optional[str] = None,
-) -> Tuple[TaxedMoneyRange, TaxedMoney]:
+    local_currency: str = None,
+):
     price_range_local = None
     discount_local_currency = None
 
@@ -116,39 +118,41 @@ def _get_product_price_range(
 def get_product_availability(
     product: Product,
     discounts: Iterable[DiscountInfo] = None,
-    country: Optional[str] = None,
-    local_currency: Optional[str] = None,
-    plugins: Optional["PluginsManager"] = None,
+    country=None,
+    local_currency=None,
+    extensions=None,
 ) -> ProductAvailability:
 
-    if not plugins:
-        plugins = get_plugins_manager()
+    if not extensions:
+        extensions = get_extensions_manager()
     discounted_net_range = product.get_price_range(discounts=discounts)
     undiscounted_net_range = product.get_price_range()
     discounted = TaxedMoneyRange(
-        start=plugins.apply_taxes_to_product(
+        start=extensions.apply_taxes_to_product(
             product, discounted_net_range.start, country
         ),
-        stop=plugins.apply_taxes_to_product(
+        stop=extensions.apply_taxes_to_product(
             product, discounted_net_range.stop, country
         ),
     )
     undiscounted = TaxedMoneyRange(
-        start=plugins.apply_taxes_to_product(
+        start=extensions.apply_taxes_to_product(
             product, undiscounted_net_range.start, country
         ),
-        stop=plugins.apply_taxes_to_product(
+        stop=extensions.apply_taxes_to_product(
             product, undiscounted_net_range.stop, country
         ),
     )
 
-    discount = _get_total_discount_from_range(undiscounted, discounted)
+    discount = _get_total_discount(undiscounted, discounted)
     price_range_local, discount_local_currency = _get_product_price_range(
         discounted, undiscounted, local_currency
     )
 
     is_on_sale = product.is_visible and discount is not None
+
     return ProductAvailability(
+        available=product.is_available,
         on_sale=is_on_sale,
         price_range=discounted,
         price_range_undiscounted=undiscounted,
@@ -161,24 +165,21 @@ def get_product_availability(
 def get_variant_availability(
     variant: ProductVariant,
     discounts: Iterable[DiscountInfo] = None,
-    country: Optional[str] = None,
-    local_currency: Optional[str] = None,
-    plugins: Optional["PluginsManager"] = None,
+    country=None,
+    local_currency=None,
+    extensions=None,
 ) -> VariantAvailability:
 
-    if not plugins:
-        plugins = get_plugins_manager()
-    discounted = plugins.apply_taxes_to_product(
+    if not extensions:
+        extensions = get_extensions_manager()
+    discounted = extensions.apply_taxes_to_product(
         variant.product, variant.get_price(discounts=discounts), country
     )
-    undiscounted = plugins.apply_taxes_to_product(
+    undiscounted = extensions.apply_taxes_to_product(
         variant.product, variant.get_price(), country
     )
 
     discount = _get_total_discount(undiscounted, discounted)
-
-    if country is None:
-        country = settings.DEFAULT_COUNTRY
 
     if local_currency:
         price_local_currency = to_local_currency(discounted, local_currency)
@@ -190,6 +191,7 @@ def get_variant_availability(
     is_on_sale = variant.is_visible and discount is not None
 
     return VariantAvailability(
+        available=variant.is_available,
         on_sale=is_on_sale,
         price=discounted,
         price_undiscounted=undiscounted,
