@@ -273,6 +273,8 @@ INSTALLED_APPS = [
     "impersonate",
     "phonenumber_field",
     "captcha",
+    "ckeditor",
+    "ckeditor_uploader",
 ]
 
 
@@ -638,3 +640,5 @@ PLUGINS = [
 # True to use DraftJS (JSON based), for the 2.0 dashboard
 # False to use the old editor from dashboard 1.0
 USE_JSON_CONTENT = get_bool_from_env("USE_JSON_CONTENT", False)
+
+CKEDITOR_UPLOAD_PATH = "uploads/"

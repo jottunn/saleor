@@ -56,12 +56,13 @@
 
 {% block content %}
   <form method="post" class="card">
+    {{ form.media }}
     {% csrf_token %}
     <div class="row">
       <div class="card-content">
         <div class="col s12 l8">
           <div class="row">
-            {{ form.title|materializecss }}
+            {{ form.title }}
           </div>
           <div class="row">
             {{ form.content|materializecss }}
