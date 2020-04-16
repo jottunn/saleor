@@ -69,4 +69,3 @@ ENV PYTHONUNBUFFERED 1
 ENV PROCESSES 4
 
 CMD ["uwsgi", "--ini", "/app/saleor/wsgi/uwsgi.ini"]
-© 2020 GitHub, Inc.
